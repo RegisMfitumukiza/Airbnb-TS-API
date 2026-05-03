@@ -1,0 +1,123 @@
+import { prisma } from "../lib/prisma.js";
+import { Prisma } from "../generated/prisma/client.js";
+
+type CreateReviewData = Prisma.ReviewUncheckedCreateInput;
+
+type GetListingReviewsOptions = {
+  listingId: string;
+  skip: number;
+  limit: number;
+  where?: Prisma.ReviewWhereInput;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+};
+
+export const createReviewService = async (data: CreateReviewData) => {
+  return prisma.review.create({
+    data,
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          avatar: true
+        }
+      }
+    }
+  });
+};
+
+export const getReviewsByListingService = async ({
+  listingId,
+  skip,
+  limit,
+  where = {},
+  sortBy = "createdAt",
+  sortOrder = "desc"
+}: GetListingReviewsOptions) => {
+  return prisma.review.findMany({
+    where: {
+      listingId,
+      ...where
+    },
+    skip,
+    take: limit,
+    orderBy: {
+      [sortBy]: sortOrder
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          avatar: true
+        }
+      }
+    }
+  });
+};
+
+export const countReviewsByListingService = async (
+  listingId: string,
+  where: Prisma.ReviewWhereInput = {}
+) => {
+  return prisma.review.count({
+    where: {
+      listingId,
+      ...where
+    }
+  });
+};
+
+export const getReviewByIdService = async (id: string) => {
+  return prisma.review.findUnique({
+    where: { id }
+  });
+};
+
+export const deleteReviewService = async (id: string) => {
+  return prisma.review.delete({
+    where: { id }
+  });
+};
+
+export const getReviewStatsByListingService = async (listingId: string) => {
+  const totalReviews = await prisma.review.count({
+    where: { listingId }
+  });
+
+  const ratingStats = await prisma.review.aggregate({
+    where: { listingId },
+    _avg: {
+      rating: true
+    },
+    _min: {
+      rating: true
+    },
+    _max: {
+      rating: true
+    }
+  });
+
+  const reviewsByRating = await prisma.review.groupBy({
+    by: ["rating"],
+    where: { listingId },
+    _count: {
+      rating: true
+    },
+    orderBy: {
+      rating: "desc"
+    }
+  });
+
+  return {
+    totalReviews,
+    averageRating: ratingStats._avg.rating,
+    minRating: ratingStats._min.rating,
+    maxRating: ratingStats._max.rating,
+    reviewsByRating: reviewsByRating.map((item) => ({
+      rating: item.rating,
+      count: item._count.rating
+    }))
+  };
+};
