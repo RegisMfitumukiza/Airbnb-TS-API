@@ -43,15 +43,10 @@ const router = Router();
 /**
  * @swagger
  * tags:
- *   name: Listings
- *   description: Listing management
- */
-
-/**
- * @swagger
- * tags:
- *   name: Reviews
- *   description: Listing reviews
+ *   - name: Listings
+ *     description: Listing management
+ *   - name: Reviews
+ *     description: Listing reviews
  */
 
 /**
@@ -59,21 +54,24 @@ const router = Router();
  * /api/v1/listings:
  *   get:
  *     summary: Get all listings
- *     description: Get paginated listings with filtering and sorting.
+ *     description: Get paginated listings with filters and sorting.
  *     tags: [Listings]
  *     parameters:
  *       - in: query
  *         name: page
  *         schema:
  *           type: integer
+ *           example: 1
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
+ *           example: 10
  *       - in: query
  *         name: location
  *         schema:
  *           type: string
+ *           example: Kigali
  *       - in: query
  *         name: type
  *         schema:
@@ -83,10 +81,12 @@ const router = Router();
  *         name: minPrice
  *         schema:
  *           type: number
+ *           example: 20
  *       - in: query
  *         name: maxPrice
  *         schema:
  *           type: number
+ *           example: 100
  *       - in: query
  *         name: sortBy
  *         schema:
@@ -108,7 +108,7 @@ router.get("/", getAllListing);
  * /api/v1/listings/stats:
  *   get:
  *     summary: Get listing statistics
- *     description: Returns total listings, price stats, and counts by type/location. ADMIN only.
+ *     description: Returns total listings, average price, min/max price, and counts by type/location. ADMIN only.
  *     tags: [Listings]
  *     security:
  *       - bearerAuth: []
@@ -124,6 +124,69 @@ router.get("/stats", authenticate, getListingStats);
 
 /**
  * @swagger
+ * /api/v1/listings:
+ *   post:
+ *     summary: Create listing
+ *     description: HOST or ADMIN can create a listing.
+ *     tags: [Listings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - description
+ *               - location
+ *               - pricePerNight
+ *               - guests
+ *               - type
+ *               - amenities
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 example: Modern Apartment in Kigali
+ *               description:
+ *                 type: string
+ *                 example: A clean and modern apartment close to the city center.
+ *               location:
+ *                 type: string
+ *                 example: Kigali
+ *               pricePerNight:
+ *                 type: number
+ *                 example: 50
+ *               guests:
+ *                 type: integer
+ *                 example: 2
+ *               type:
+ *                 type: string
+ *                 enum: [APARTMENT, HOUSE, VILLA, CABIN]
+ *                 example: APARTMENT
+ *               amenities:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["wifi", "parking", "kitchen"]
+ *               rating:
+ *                 type: number
+ *                 example: 4.5
+ *     responses:
+ *       201:
+ *         description: Listing created successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - hosts only
+ */
+router.post("/", authenticate, requireHost, validate(createListingSchema), createListing);
+
+/**
+ * @swagger
  * /api/v1/listings/{listingId}/reviews:
  *   get:
  *     summary: Get reviews for a listing
@@ -133,7 +196,6 @@ router.get("/stats", authenticate, getListingStats);
  *       - in: path
  *         name: listingId
  *         required: true
- *         description: Listing ID
  *         schema:
  *           type: string
  *           format: uuid
@@ -141,10 +203,12 @@ router.get("/stats", authenticate, getListingStats);
  *         name: page
  *         schema:
  *           type: integer
+ *           example: 1
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
+ *           example: 10
  *       - in: query
  *         name: sortBy
  *         schema:
@@ -174,7 +238,6 @@ router.get("/:listingId/reviews", getReviewsByListing);
  *       - in: path
  *         name: listingId
  *         required: true
- *         description: Listing ID
  *         schema:
  *           type: string
  *           format: uuid
@@ -199,7 +262,6 @@ router.get("/:listingId/reviews/stats", getReviewStatsByListing);
  *       - in: path
  *         name: listingId
  *         required: true
- *         description: Listing ID
  *         schema:
  *           type: string
  *           format: uuid
@@ -217,9 +279,10 @@ router.get("/:listingId/reviews/stats", getReviewStatsByListing);
  *                 type: integer
  *                 minimum: 1
  *                 maximum: 5
+ *                 example: 5
  *               comment:
  *                 type: string
- *                 minLength: 10
+ *                 example: This place was very clean and comfortable.
  *     responses:
  *       201:
  *         description: Review created successfully
@@ -240,21 +303,22 @@ router.post(
  * /api/v1/listings/{id}:
  *   get:
  *     summary: Get listing by ID
+ *     description: Retrieve a single listing by its ID.
  *     tags: [Listings]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Listing retrieved successfully
+ *       404:
+ *         description: Listing not found
  */
 router.get("/:id", getListingById);
-
-/**
- * @swagger
- * /api/v1/listings:
- *   post:
- *     summary: Create listing
- *     description: HOST or ADMIN can create a listing.
- *     tags: [Listings]
- *     security:
- *       - bearerAuth: []
- */
-router.post("/", authenticate, requireHost, validate(createListingSchema), createListing);
 
 /**
  * @swagger
@@ -265,6 +329,55 @@ router.post("/", authenticate, requireHost, validate(createListingSchema), creat
  *     tags: [Listings]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 example: Updated Apartment Title
+ *               description:
+ *                 type: string
+ *                 example: Updated listing description.
+ *               location:
+ *                 type: string
+ *                 example: Kigali
+ *               pricePerNight:
+ *                 type: number
+ *                 example: 65
+ *               guests:
+ *                 type: integer
+ *                 example: 3
+ *               type:
+ *                 type: string
+ *                 enum: [APARTMENT, HOUSE, VILLA, CABIN]
+ *               amenities:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["wifi", "parking"]
+ *               rating:
+ *                 type: number
+ *                 example: 4.8
+ *     responses:
+ *       200:
+ *         description: Listing updated successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Listing not found
  */
 router.put("/:id", authenticate, requireHost, validate(updateListingSchema), updateListing);
 
@@ -277,6 +390,22 @@ router.put("/:id", authenticate, requireHost, validate(updateListingSchema), upd
  *     tags: [Listings]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Listing deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Listing not found
  */
 router.delete("/:id", authenticate, requireHost, deleteListing);
 
@@ -285,9 +414,32 @@ router.delete("/:id", authenticate, requireHost, deleteListing);
  * /api/v1/listings/{id}/cover-image:
  *   post:
  *     summary: Upload listing cover image
+ *     description: Upload or replace a listing cover image. Field name must be image.
  *     tags: [Listings]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Cover image uploaded successfully
  */
 router.post(
   "/:id/cover-image",
@@ -302,9 +454,20 @@ router.post(
  * /api/v1/listings/{id}/cover-image:
  *   delete:
  *     summary: Delete listing cover image
+ *     description: Deletes the listing cover image from Cloudinary and database.
  *     tags: [Listings]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Cover image deleted successfully
  */
 router.delete(
   "/:id/cover-image",
@@ -318,9 +481,34 @@ router.delete(
  * /api/v1/listings/{id}/images:
  *   post:
  *     summary: Upload multiple listing images
+ *     description: Upload up to 10 listing images. Field name must be images.
  *     tags: [Listings]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - images
+ *             properties:
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *     responses:
+ *       200:
+ *         description: Listing images uploaded successfully
  */
 router.post(
   "/:id/images",
@@ -335,9 +523,20 @@ router.post(
  * /api/v1/listings/{id}/images:
  *   delete:
  *     summary: Delete all listing images
+ *     description: Deletes all listing gallery images from Cloudinary and database.
  *     tags: [Listings]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: All listing images deleted successfully
  */
 router.delete(
   "/:id/images",
@@ -351,9 +550,28 @@ router.delete(
  * /api/v1/listings/{id}/images/{publicId}:
  *   delete:
  *     summary: Delete single listing image
+ *     description: Deletes one image by Cloudinary publicId. Encode slashes in publicId as %2F.
  *     tags: [Listings]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: publicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: Listing-Images%2Fabc123
+ *     responses:
+ *       200:
+ *         description: Listing image deleted successfully
+ *       404:
+ *         description: Image not found
  */
 router.delete(
   "/:id/images/:publicId",

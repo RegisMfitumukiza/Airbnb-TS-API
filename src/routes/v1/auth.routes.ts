@@ -1,12 +1,12 @@
 import { Router } from "express";
 
 import {
-    register,
-    login,
-    getMe,
-    changePassword,
-    forgotPassword,
-    resetPassword
+  register,
+  login,
+  getMe,
+  changePassword,
+  forgotPassword,
+  resetPassword
 } from "../../controllers/auth.controller.js";
 
 import { validate } from "../../middlewares/validate.middleware.js";
@@ -14,11 +14,11 @@ import { authenticate } from "../../middlewares/auth.middleware.js";
 import { authLimiter } from "../../middlewares/rateLimiting.js";
 
 import {
-    registerSchema,
-    loginSchema,
-    changePasswordSchema,
-    forgotPasswordSchema,
-    resetPasswordSchema
+  registerSchema,
+  loginSchema,
+  changePasswordSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema
 } from "../../validators/auth.schema.js";
 
 const router = Router();
@@ -26,8 +26,8 @@ const router = Router();
 /**
  * @swagger
  * tags:
- *   name: Auth
- *   description: Authentication and authorization
+ *   - name: Auth
+ *     description: Authentication and authorization
  */
 
 /**
@@ -35,67 +35,89 @@ const router = Router();
  * /api/v1/auth/register:
  *   post:
  *     summary: Register a new user
- *     description: Creates a new user account and returns a JWT token.
+ *     description: Create a new user account.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/RegisterInput'
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - username
+ *               - phone
+ *               - password
+ *               - confirmPassword
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: John Doe
+ *               email:
+ *                 type: string
+ *                 example: john@example.com
+ *               username:
+ *                 type: string
+ *                 example: johndoe
+ *               phone:
+ *                 type: string
+ *                 example: "0781234567"
+ *               password:
+ *                 type: string
+ *                 example: Password123!
+ *               confirmPassword:
+ *                 type: string
+ *                 example: Password123!
+ *               role:
+ *                 type: string
+ *                 enum: [GUEST, HOST]
+ *                 example: GUEST
  *     responses:
  *       201:
  *         description: User registered successfully
  *       400:
  *         description: Validation error
- *       409:
- *         description: Email or username already exists
- *       429:
- *         description: Too many requests (rate limit)
  */
-router.post(
-  "/register",
-  validate(registerSchema),
-  authLimiter,
-  register
-);
+router.post("/register", validate(registerSchema), authLimiter, register);
 
 /**
  * @swagger
  * /api/v1/auth/login:
  *   post:
  *     summary: Login user
- *     description: Authenticates user and returns a JWT token.
+ *     description: Authenticate user and return JWT token.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/LoginInput'
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: john@example.com
+ *               password:
+ *                 type: string
+ *                 example: Password123!
  *     responses:
  *       200:
  *         description: Login successful
- *       400:
- *         description: Validation error
  *       401:
  *         description: Invalid credentials
- *       429:
- *         description: Too many requests (rate limit)
  */
-router.post(
-  "/login",
-  validate(loginSchema),
-  authLimiter,
-  login
-);
+router.post("/login", validate(loginSchema), authLimiter, login);
 
 /**
  * @swagger
  * /api/v1/auth/me:
  *   get:
- *     summary: Get current authenticated user
- *     description: Returns the currently logged-in user's profile.
+ *     summary: Get current user
+ *     description: Returns the authenticated user's profile.
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
@@ -103,7 +125,7 @@ router.post(
  *       200:
  *         description: Current user retrieved successfully
  *       401:
- *         description: Unauthorized - missing or invalid token
+ *         description: Unauthorized
  */
 router.get("/me", authenticate, getMe);
 
@@ -112,7 +134,7 @@ router.get("/me", authenticate, getMe);
  * /api/v1/auth/change-password:
  *   post:
  *     summary: Change password
- *     description: Allows an authenticated user to change their password.
+ *     description: Change password for authenticated user.
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
@@ -121,14 +143,28 @@ router.get("/me", authenticate, getMe);
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/ChangePasswordInput'
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *               - confirmPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 example: OldPassword123!
+ *               newPassword:
+ *                 type: string
+ *                 example: NewPassword123!
+ *               confirmPassword:
+ *                 type: string
+ *                 example: NewPassword123!
  *     responses:
  *       200:
  *         description: Password changed successfully
  *       400:
  *         description: Validation error
  *       401:
- *         description: Unauthorized or incorrect current password
+ *         description: Unauthorized
  */
 router.post(
   "/change-password",
@@ -141,22 +177,26 @@ router.post(
  * @swagger
  * /api/v1/auth/forgot-password:
  *   post:
- *     summary: Request password reset
- *     description: Sends a password reset link to the user's email if it exists.
+ *     summary: Forgot password
+ *     description: Send password reset link to user email.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/ForgotPasswordInput'
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: john@example.com
  *     responses:
  *       200:
- *         description: Reset link sent if email exists
+ *         description: Reset link sent
  *       400:
  *         description: Validation error
- *       429:
- *         description: Too many requests (rate limit)
  */
 router.post(
   "/forgot-password",
@@ -170,7 +210,7 @@ router.post(
  * /api/v1/auth/reset-password/{token}:
  *   post:
  *     summary: Reset password
- *     description: Resets user password using a valid reset token.
+ *     description: Reset password using token sent to email.
  *     tags: [Auth]
  *     parameters:
  *       - in: path
@@ -184,14 +224,22 @@ router.post(
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/ResetPasswordInput'
+ *             type: object
+ *             required:
+ *               - newPassword
+ *               - confirmPassword
+ *             properties:
+ *               newPassword:
+ *                 type: string
+ *                 example: NewPassword123!
+ *               confirmPassword:
+ *                 type: string
+ *                 example: NewPassword123!
  *     responses:
  *       200:
  *         description: Password reset successfully
  *       400:
  *         description: Invalid or expired token
- *       429:
- *         description: Too many requests (rate limit)
  */
 router.post(
   "/reset-password/:token",

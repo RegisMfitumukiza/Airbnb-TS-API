@@ -6,9 +6,10 @@ import {
   getBookingById,
   updateBooking,
   updateBookingStatus,
-  deleteBooking,
+  deleteBooking
 } from "../../controllers/bookings.controller.js";
 
+import { authenticate } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validate.middleware.js";
 
 import {
@@ -17,28 +18,64 @@ import {
   updateBookingStatusSchema
 } from "../../validators/booking.schema.js";
 
-import {
-  authenticate,
-  requireGuest,
-  requireAdmin,
-  requireHost
-} from "../../middlewares/auth.middleware.js";
-
 const router = Router();
 
 /**
  * @swagger
  * tags:
- *   name: Bookings
- *   description: Booking management and reservations
+ *   - name: Bookings
+ *     description: Booking management
  */
 
 /**
  * @swagger
  * /api/v1/bookings:
+ *   get:
+ *     summary: Get all bookings
+ *     description: Get paginated bookings (ADMIN only or filtered by user).
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           example: 10
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [PENDING, CONFIRMED, CANCELLED]
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [createdAt, checkIn, checkOut]
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *     responses:
+ *       200:
+ *         description: Bookings retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/", authenticate, getAllBookings);
+
+/**
+ * @swagger
+ * /api/v1/bookings:
  *   post:
- *     summary: Create a booking
- *     description: Allows a GUEST to create a booking for a listing.
+ *     summary: Create booking
+ *     description: Authenticated users can book a listing.
  *     tags: [Bookings]
  *     security:
  *       - bearerAuth: []
@@ -47,53 +84,42 @@ const router = Router();
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/CreateBookingInput'
+ *             type: object
+ *             required:
+ *               - listingId
+ *               - checkIn
+ *               - checkOut
+ *             properties:
+ *               listingId:
+ *                 type: string
+ *                 format: uuid
+ *                 example: "uuid-listing-id"
+ *               checkIn:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2026-06-01T00:00:00.000Z"
+ *               checkOut:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2026-06-05T00:00:00.000Z"
  *     responses:
  *       201:
  *         description: Booking created successfully
  *       400:
- *         description: Validation error or invalid dates
+ *         description: Invalid input or overlapping booking
  *       401:
  *         description: Unauthorized
- *       403:
- *         description: Only guests can create bookings
- *       409:
- *         description: Booking conflict (dates overlap)
+ *       404:
+ *         description: Listing not found
  */
-router.post(
-  "/",
-  authenticate,
-  requireGuest,
-  validate(createBookingSchema),
-  createBooking
-);
-
-/**
- * @swagger
- * /api/v1/bookings:
- *   get:
- *     summary: Get all bookings
- *     description: Retrieve all bookings (Admin only).
- *     tags: [Bookings]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of bookings
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Admin only
- */
-router.get("/", authenticate, requireAdmin, getAllBookings);
-
+router.post("/", authenticate, validate(createBookingSchema), createBooking);
 
 /**
  * @swagger
  * /api/v1/bookings/{id}:
  *   get:
  *     summary: Get booking by ID
- *     description: Retrieve details of a specific booking.
+ *     description: Retrieve a single booking.
  *     tags: [Bookings]
  *     security:
  *       - bearerAuth: []
@@ -101,15 +127,12 @@ router.get("/", authenticate, requireAdmin, getAllBookings);
  *       - in: path
  *         name: id
  *         required: true
- *         description: Booking ID
  *         schema:
  *           type: string
  *           format: uuid
  *     responses:
  *       200:
  *         description: Booking retrieved successfully
- *       401:
- *         description: Unauthorized
  *       404:
  *         description: Booking not found
  */
@@ -120,7 +143,7 @@ router.get("/:id", authenticate, getBookingById);
  * /api/v1/bookings/{id}:
  *   put:
  *     summary: Update booking
- *     description: Update booking details such as check-in or check-out dates.
+ *     description: Update booking dates or listing.
  *     tags: [Bookings]
  *     security:
  *       - bearerAuth: []
@@ -128,7 +151,6 @@ router.get("/:id", authenticate, getBookingById);
  *       - in: path
  *         name: id
  *         required: true
- *         description: Booking ID
  *         schema:
  *           type: string
  *           format: uuid
@@ -137,32 +159,33 @@ router.get("/:id", authenticate, getBookingById);
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/UpdateBookingInput'
+ *             type: object
+ *             properties:
+ *               checkIn:
+ *                 type: string
+ *                 format: date-time
+ *               checkOut:
+ *                 type: string
+ *                 format: date-time
+ *               listingId:
+ *                 type: string
+ *                 format: uuid
  *     responses:
  *       200:
  *         description: Booking updated successfully
  *       400:
- *         description: Validation error
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Not allowed to update this booking
+ *         description: Invalid input
  *       404:
  *         description: Booking not found
  */
-router.put(
-  "/:id",
-  authenticate,
-  validate(updateBookingSchema),
-  updateBooking
-);
+router.put("/:id", authenticate, validate(updateBookingSchema), updateBooking);
 
 /**
  * @swagger
  * /api/v1/bookings/{id}/status:
  *   patch:
  *     summary: Update booking status
- *     description: Allows a HOST or ADMIN to confirm or cancel a booking.
+ *     description: Update booking status (ADMIN or HOST).
  *     tags: [Bookings]
  *     security:
  *       - bearerAuth: []
@@ -170,7 +193,6 @@ router.put(
  *       - in: path
  *         name: id
  *         required: true
- *         description: Booking ID
  *         schema:
  *           type: string
  *           format: uuid
@@ -179,23 +201,25 @@ router.put(
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/UpdateBookingStatusInput'
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [PENDING, CONFIRMED, CANCELLED]
+ *                 example: CONFIRMED
  *     responses:
  *       200:
- *         description: Booking status updated
+ *         description: Booking status updated successfully
  *       400:
  *         description: Invalid status
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Only host or admin allowed
  *       404:
  *         description: Booking not found
  */
 router.patch(
   "/:id/status",
   authenticate,
-  requireHost,
   validate(updateBookingStatusSchema),
   updateBookingStatus
 );
@@ -205,7 +229,7 @@ router.patch(
  * /api/v1/bookings/{id}:
  *   delete:
  *     summary: Delete booking
- *     description: Delete a booking. Allowed for booking owner or admin.
+ *     description: Cancel or delete a booking.
  *     tags: [Bookings]
  *     security:
  *       - bearerAuth: []
@@ -213,17 +237,12 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         description: Booking ID
  *         schema:
  *           type: string
  *           format: uuid
  *     responses:
  *       200:
  *         description: Booking deleted successfully
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Not allowed to delete this booking
  *       404:
  *         description: Booking not found
  */

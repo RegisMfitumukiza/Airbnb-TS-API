@@ -6,6 +6,8 @@ import {
   getUserById,
   updateUser,
   deleteUser,
+  getMe,
+  updateMe,
   uploadMyAvatar,
   deleteMyAvatar,
   getUserStats
@@ -14,17 +16,16 @@ import {
 import { getListingByHost } from "../../controllers/listings.controller.js";
 import { getBookingsByGuest } from "../../controllers/bookings.controller.js";
 
-
 import { validate } from "../../middlewares/validate.middleware.js";
-import {
-  createUserSchema,
-  updateUserSchema
-} from "../../validators/user.schema.js";
-
 import {
   authenticate,
   requireAdmin
 } from "../../middlewares/auth.middleware.js";
+
+import {
+  createUserSchema,
+  updateUserSchema
+} from "../../validators/user.schema.js";
 
 import { uploadSingleImage } from "../../middlewares/upload.middleware.js";
 
@@ -33,16 +34,66 @@ const router = Router();
 /**
  * @swagger
  * tags:
- *   name: Users
- *   description: User management and profile operations
+ *   - name: Users
+ *     description: User management and profile operations
  */
 
 /**
  * @swagger
  * /api/v1/users:
+ *   get:
+ *     summary: Get all users
+ *     description: Get paginated users with search, role filter, and sorting. ADMIN only.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           example: 10
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *           example: sam
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *           enum: [GUEST, HOST, ADMIN]
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [name, email, createdAt]
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *     responses:
+ *       200:
+ *         description: Users retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - admins only
+ */
+router.get("/", authenticate, requireAdmin, getAllUsers);
+
+/**
+ * @swagger
+ * /api/v1/users:
  *   post:
- *     summary: Admin creates a new user
- *     description: Creates a new user account. This route is restricted to ADMIN users only.
+ *     summary: Create a user
+ *     description: Create a new user. ADMIN only.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -51,118 +102,54 @@ const router = Router();
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/CreateUserInput'
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - username
+ *               - phone
+ *               - password
+ *               - confirmPassword
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: John Doe
+ *               email:
+ *                 type: string
+ *                 example: john@example.com
+ *               username:
+ *                 type: string
+ *                 example: johndoe
+ *               phone:
+ *                 type: string
+ *                 example: "0781234567"
+ *               password:
+ *                 type: string
+ *                 example: Password123!
+ *               confirmPassword:
+ *                 type: string
+ *                 example: Password123!
+ *               role:
+ *                 type: string
+ *                 enum: [GUEST, HOST]
+ *                 example: GUEST
+ *               avatar:
+ *                 type: string
+ *                 example: https://example.com/avatar.png
+ *               bio:
+ *                 type: string
+ *                 example: I love travelling.
  *     responses:
  *       201:
  *         description: User created successfully
  *       400:
  *         description: Validation error
  *       401:
- *         description: Unauthorized - missing or invalid token
+ *         description: Unauthorized
  *       403:
- *         description: Forbidden - admin only
- *       500:
- *         description: Internal server error
+ *         description: Forbidden - admins only
  */
-router.post(
-  "/",
-  authenticate,
-  requireAdmin,
-  validate(createUserSchema),
-  createUser
-);
-
-/**
- * @swagger
- * /api/v1/users:
- *   get:
- *     summary: Get all users
- *     description: Returns all users. This route is restricted to ADMIN users only.
- *     tags: [Users]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Users retrieved successfully
- *       401:
- *         description: Unauthorized - missing or invalid token
- *       403:
- *         description: Forbidden - admin only
- *       500:
- *         description: Internal server error
- */
-router.get(
-  "/",
-  authenticate,
-  requireAdmin,
-  getAllUsers
-);
-
-/**
- * @swagger
- * /api/v1/users/me/avatar:
- *   patch:
- *     summary: Upload or update current user's avatar
- *     description: Uploads a new avatar image for the authenticated user. If an old avatar exists, it is replaced.
- *     tags: [Users]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             required:
- *               - image
- *             properties:
- *               image:
- *                 type: string
- *                 format: binary
- *                 description: Avatar image file
- *     responses:
- *       200:
- *         description: Avatar uploaded successfully
- *       400:
- *         description: Image is required or invalid file type
- *       401:
- *         description: Unauthorized - missing or invalid token
- *       404:
- *         description: User not found
- *       500:
- *         description: Internal server error
- */
-router.patch(
-  "/me/avatar",
-  authenticate,
-  uploadSingleImage,
-  uploadMyAvatar
-);
-
-/**
- * @swagger
- * /api/v1/users/me/avatar:
- *   delete:
- *     summary: Delete current user's avatar
- *     description: Deletes the authenticated user's avatar from Cloudinary and clears avatar fields in the database.
- *     tags: [Users]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Avatar deleted successfully
- *       401:
- *         description: Unauthorized - missing or invalid token
- *       404:
- *         description: User not found
- *       500:
- *         description: Internal server error
- */
-router.delete(
-  "/me/avatar",
-  authenticate,
-  deleteMyAvatar
-);
+router.post("/", authenticate, requireAdmin, validate(createUserSchema), createUser);
 
 /**
  * @swagger
@@ -185,57 +172,132 @@ router.get("/stats", authenticate, getUserStats);
 
 /**
  * @swagger
- * /api/v1/users/{id}:
+ * /api/v1/users/me:
  *   get:
- *     summary: Get user by ID
- *     description: Returns a user by ID. ADMIN can view any user, while normal users can only view their own profile.
+ *     summary: Get current user
+ *     description: Returns the currently authenticated user's profile.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: User ID
- *         schema:
- *           type: string
- *           format: uuid
  *     responses:
  *       200:
- *         description: User retrieved successfully
+ *         description: Current user retrieved successfully
  *       401:
- *         description: Unauthorized - missing or invalid token
- *       403:
- *         description: Forbidden - users can only view their own profile
- *       404:
- *         description: User not found
- *       500:
- *         description: Internal server error
+ *         description: Unauthorized
  */
-router.get("/:id", authenticate, getUserById);
+router.get("/me", authenticate, getMe);
+
+/**
+ * @swagger
+ * /api/v1/users/me:
+ *   put:
+ *     summary: Update current user
+ *     description: Update the currently authenticated user's profile.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: John Updated
+ *               email:
+ *                 type: string
+ *                 example: john.updated@example.com
+ *               username:
+ *                 type: string
+ *                 example: johnupdated
+ *               phone:
+ *                 type: string
+ *                 example: "0787654321"
+ *               role:
+ *                 type: string
+ *                 enum: [GUEST, HOST]
+ *               avatar:
+ *                 type: string
+ *                 example: https://example.com/avatar.png
+ *               bio:
+ *                 type: string
+ *                 example: Updated bio.
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.put("/me", authenticate, validate(updateUserSchema), updateMe);
+
+/**
+ * @swagger
+ * /api/v1/users/me/avatar:
+ *   post:
+ *     summary: Upload current user's avatar
+ *     description: Upload or replace avatar image. Field name must be image.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded successfully
+ *       400:
+ *         description: No file uploaded
+ *       401:
+ *         description: Unauthorized
+ */
+router.post("/me/avatar", authenticate, uploadSingleImage, uploadMyAvatar);
+
+/**
+ * @swagger
+ * /api/v1/users/me/avatar:
+ *   delete:
+ *     summary: Delete current user's avatar
+ *     description: Delete avatar image from Cloudinary and database.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Avatar deleted successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.delete("/me/avatar", authenticate, deleteMyAvatar);
 
 /**
  * @swagger
  * /api/v1/users/{id}/listings:
  *   get:
- *     summary: Get listings by host
- *     description: Returns all listings created by a specific user/host.
+ *     summary: Get user's listings
+ *     description: Get all listings created by a specific user/host.
  *     tags: [Users]
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         description: Host user ID
+ *         description: User/host ID
  *         schema:
  *           type: string
  *           format: uuid
  *     responses:
  *       200:
- *         description: Host listings retrieved successfully
- *       404:
- *         description: Host or listings not found
- *       500:
- *         description: Internal server error
+ *         description: User listings retrieved successfully
  */
 router.get("/:id/listings", getListingByHost);
 
@@ -243,8 +305,8 @@ router.get("/:id/listings", getListingByHost);
  * @swagger
  * /api/v1/users/{id}/bookings:
  *   get:
- *     summary: Get bookings by user
- *     description: Retrieve all bookings made by a specific user. Users can only view their own bookings unless they are ADMIN.
+ *     summary: Get user's bookings
+ *     description: Get paginated bookings made by a specific user. User can view own bookings; ADMIN can view any user's bookings.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -260,15 +322,17 @@ router.get("/:id/listings", getListingByHost);
  *         name: page
  *         schema:
  *           type: integer
+ *           example: 1
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
+ *           example: 10
  *       - in: query
  *         name: sortBy
  *         schema:
  *           type: string
- *           example: createdAt
+ *           enum: [createdAt, checkIn, checkOut, status]
  *       - in: query
  *         name: sortOrder
  *         schema:
@@ -281,17 +345,44 @@ router.get("/:id/listings", getListingByHost);
  *         description: Unauthorized
  *       403:
  *         description: Forbidden
- *       404:
- *         description: User not found
  */
 router.get("/:id/bookings", authenticate, getBookingsByGuest);
 
 /**
  * @swagger
  * /api/v1/users/{id}:
+ *   get:
+ *     summary: Get user by ID
+ *     description: ADMIN can get any user. Normal users can only get their own profile.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: User ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: User retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: User not found
+ */
+router.get("/:id", authenticate, getUserById);
+
+/**
+ * @swagger
+ * /api/v1/users/{id}:
  *   put:
  *     summary: Update user by ID
- *     description: Updates user profile information. ADMIN can update any user, while normal users can only update their own profile.
+ *     description: ADMIN can update any user. Normal users can only update their own profile.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -308,34 +399,47 @@ router.get("/:id/bookings", authenticate, getBookingsByGuest);
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/UpdateUserInput'
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: Updated Name
+ *               email:
+ *                 type: string
+ *                 example: updated@example.com
+ *               username:
+ *                 type: string
+ *                 example: updateduser
+ *               phone:
+ *                 type: string
+ *                 example: "0789999999"
+ *               role:
+ *                 type: string
+ *                 enum: [GUEST, HOST]
+ *               avatar:
+ *                 type: string
+ *                 example: https://example.com/avatar.png
+ *               bio:
+ *                 type: string
+ *                 example: Updated user bio.
  *     responses:
  *       200:
  *         description: User updated successfully
- *       400:
- *         description: Validation error
  *       401:
- *         description: Unauthorized - missing or invalid token
+ *         description: Unauthorized
  *       403:
- *         description: Forbidden - users can only update their own profile or cannot update role
+ *         description: Forbidden
  *       404:
  *         description: User not found
- *       500:
- *         description: Internal server error
  */
-router.put(
-  "/:id",
-  authenticate,
-  validate(updateUserSchema),
-  updateUser
-);
+router.put("/:id", authenticate, validate(updateUserSchema), updateUser);
 
 /**
  * @swagger
  * /api/v1/users/{id}:
  *   delete:
  *     summary: Delete user by ID
- *     description: Deletes a user account. ADMIN can delete any user, while normal users can only delete their own account.
+ *     description: ADMIN can delete any user, while normal users can only delete their own account.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -351,13 +455,11 @@ router.put(
  *       200:
  *         description: User deleted successfully
  *       401:
- *         description: Unauthorized - missing or invalid token
+ *         description: Unauthorized
  *       403:
- *         description: Forbidden - users can only delete their own account
+ *         description: Forbidden
  *       404:
  *         description: User not found
- *       500:
- *         description: Internal server error
  */
 router.delete("/:id", authenticate, deleteUser);
 
