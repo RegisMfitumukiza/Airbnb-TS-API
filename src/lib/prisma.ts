@@ -9,10 +9,12 @@ if (!connectionString) {
   throw new Error("DATABASE_URL missing. Please set it in .env");
 }
 
-const pool = new Pool({ 
+const pool = new Pool({
   connectionString,
-  ssl: 
-    process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  ssl:
+    process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : false,
   max: Number(process.env.DB_POOL_MAX) || 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000
