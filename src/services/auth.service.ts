@@ -10,7 +10,6 @@ type RegisterData = {
   phone: string;
   password: string;
   confirmPassword?: string;
-  role?: Role;
 };
 
 const safeUserSelect = {
@@ -46,8 +45,15 @@ export const registerUserService = async (data: RegisterData) => {
       username: data.username,
       phone: data.phone,
       password: hashedPassword,
-      role: data.role ?? Role.GUEST
+      role: Role.GUEST
     },
+    select: safeUserSelect
+  });
+};
+
+export const findUserByGooglePayloadService = async (userId: string) => {
+  return prisma.user.findUnique({
+    where: { id: userId },
     select: safeUserSelect
   });
 };
@@ -59,11 +65,26 @@ export const findUserByEmailService = async (email: string) => {
 };
 
 export const findUserByIdService = async (id: string) => {
-  return await prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id },
     select: {
       ...safeUserSelect,
-      listings: true,
+
+      listings: {
+        include: {
+          reviews: {
+            select: {
+              rating: true
+            }
+          },
+          _count: {
+            select: {
+              bookings: true
+            }
+          }
+        }
+      },
+
       bookings: {
         include: {
           listing: true
@@ -71,6 +92,33 @@ export const findUserByIdService = async (id: string) => {
       }
     }
   });
+
+  if (!user) return null;
+
+  const totalBookings = user.listings.reduce(
+    (sum, listing) => sum + listing._count.bookings,
+    0
+  );
+
+  const ratings = user.listings.flatMap((listing) =>
+    listing.reviews.map((review) => review.rating)
+  );
+
+  const averageRating =
+    ratings.length > 0
+      ? ratings.reduce((sum, rating) => sum + rating, 0) /
+        ratings.length
+      : 0;
+
+  const superhost =
+    user.role === Role.HOST &&
+    totalBookings >= 2 &&
+    averageRating >= 4.5;
+
+  return {
+    ...user,
+    superhost
+  };
 };
 
 export const findUserWithPasswordByIdService = async (id: string) => {

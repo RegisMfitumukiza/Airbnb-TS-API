@@ -19,7 +19,8 @@ import {
   saveResetTokenService,
   findUserByResetTokenService,
   resetPasswordService,
-  findUserWithPasswordByIdService
+  findUserWithPasswordByIdService,
+  findUserByGooglePayloadService
 } from "../services/auth.service.js";
 
 const removeSensitiveData = <T extends Record<string, unknown>>(user: T) => {
@@ -101,6 +102,34 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+export const googleOAuthCallback = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!req.user) {
+      throw new APIError("Google authentication failed", 401);
+    }
+
+    const user = await findUserByGooglePayloadService(req.user.userId);
+
+    if (!user) {
+      throw new APIError("User not found", 404);
+    }
+
+    const token = generateToken({
+      userId: user.id,
+      role: user.role
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+
+    logger.info("Google OAuth login successful", {
+      userId: user.id,
+      email: user.email
+    });
+
+    res.redirect(`${frontendUrl}/oauth-success?token=${token}`);
+  }
+);
+
 export const getMe = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
     throw new APIError("Unauthorized", 401);
@@ -177,14 +206,11 @@ export const forgotPassword = asyncHandler(async (req: Request, res: Response) =
 
   await saveResetTokenService(user.id, resetToken, resetTokenExpiry);
 
-  const baseUrl = process.env.BASE_URL || "http://localhost:3000";
-  const resetLink = `${baseUrl}/api/v1/auth/reset-password/${resetToken}`;
-
   try {
     await sendEmail(
       user.email,
       "Password Reset Request",
-      passwordResetEmail(user.name, resetLink, resetToken)
+      passwordResetEmail(user.name, resetToken)
     );
 
     logger.info("Password reset email sent", {

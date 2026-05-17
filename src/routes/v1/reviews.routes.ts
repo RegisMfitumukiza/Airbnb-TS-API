@@ -1,7 +1,14 @@
 import { Router } from "express";
 
-import { deleteReview } from "../../controllers/reviews.controller.js";
-import { authenticate } from "../../middlewares/auth.middleware.js";
+import {
+  deleteReview,
+  getAllReviews,
+} from "../../controllers/reviews.controller.js";
+
+import {
+  authenticate,
+  requireAdmin,
+} from "../../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -11,6 +18,30 @@ const router = Router();
  *   - name: Reviews
  *     description: Review management
  */
+
+/**
+ * @swagger
+ * /api/v1/reviews:
+ *   get:
+ *     summary: Get all reviews
+ *     description: ADMIN only. Returns all platform reviews with listing and user information.
+ *     tags: [Reviews]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Reviews fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
+router.get(
+  "/",
+  authenticate,
+  requireAdmin,
+  getAllReviews
+);
 
 /**
  * @swagger
@@ -35,12 +66,14 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  *       403:
- *         description: Forbidden - users can only delete their own review
+ *         description: Forbidden
  *       404:
  *         description: Review not found
- *       500:
- *         description: Internal server error
  */
-router.delete("/:id", authenticate, deleteReview);
+router.delete(
+  "/:id",
+  authenticate,
+  deleteReview
+);
 
 export default router;

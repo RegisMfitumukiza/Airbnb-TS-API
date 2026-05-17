@@ -1,5 +1,9 @@
 import { Request, Response } from "express";
-import { BookingStatus, Prisma, Role } from "../generated/prisma/client.js";
+import {
+  BookingStatus,
+  NotificationType,
+  Role,
+} from "../generated/prisma/client.js";
 
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { APIError } from "../utils/ApiError.js";
@@ -13,47 +17,36 @@ import {
   getBookingByIdService,
   getBookingsByGuestService,
   countBookingsByGuestService,
+  getBookingsByHostService,
+  countBookingsByHostService,
   updateBookingService,
   updateBookingStatusService,
-  findOverlappingBookingService
+  deleteBookingService,
+  findOverlappingBookingService,
 } from "../services/bookings.service.js";
 
-const getBookingSort = (
-  sortByQuery: unknown,
-  sortOrderQuery: unknown
-): {
-  sortBy: string;
-  sortOrder: "asc" | "desc";
-} => {
-  const allowedSorts = ["createdAt", "checkIn", "checkOut", "status"];
-
-  const sortBy = allowedSorts.includes(String(sortByQuery))
-    ? String(sortByQuery)
-    : "createdAt";
-
-  const sortOrder: "asc" | "desc" =
-    sortOrderQuery === "asc" ? "asc" : "desc";
-
-  return { sortBy, sortOrder };
-};
+import { getListingByIdService } from "../services/listings.service.js";
+import { createNotificationService } from "../services/notifications.service.js";
 
 export const createBooking = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    if (!req.user) {
-      throw new APIError("Unauthorized", 401);
+    if (!req.user) throw new APIError("Unauthorized", 401);
+
+    const { listingId, checkIn, checkOut, guests } = req.body;
+
+    const listing = await getListingByIdService(listingId);
+    if (!listing) throw new APIError("Listing not found", 404);
+
+    if (!listing.available) {
+      throw new APIError("Listing is not available", 400);
     }
 
-    const { checkIn, checkOut, listingId } = req.body;
+    if (guests && guests > listing.guests) {
+      throw new APIError(`Maximum guests allowed is ${listing.guests}`, 400);
+    }
 
     const checkInDate = new Date(checkIn);
     const checkOutDate = new Date(checkOut);
-
-    if (
-      Number.isNaN(checkInDate.getTime()) ||
-      Number.isNaN(checkOutDate.getTime())
-    ) {
-      throw new APIError("Invalid date format", 400);
-    }
 
     const overlappingBooking = await findOverlappingBookingService(
       listingId,
@@ -62,84 +55,74 @@ export const createBooking = asyncHandler(
     );
 
     if (overlappingBooking) {
-      logger.warn("Booking conflict detected", {
-        userId: req.user.userId,
-        listingId
-      });
-
       throw new APIError("Listing is already booked for these dates", 409);
     }
 
     const booking = await createBookingService({
       checkIn: checkInDate,
       checkOut: checkOutDate,
+      guests,
       guestId: req.user.userId,
-      listingId
+      listingId,
+    });
+
+    await createNotificationService({
+      userId: listing.hostId,
+      title: "New booking request",
+      message: `${req.user.email} requested to book ${listing.title}`,
+      type: NotificationType.BOOKING_CREATED,
     });
 
     logger.info("Booking created", {
       bookingId: booking.id,
-      userId: req.user.userId,
-      listingId
+      listingId,
+      guestId: req.user.userId,
+      hostId: listing.hostId,
     });
 
     res.status(201).json({
       success: true,
       message: "Booking created successfully",
-      data: booking
+      data: booking,
     });
   }
 );
 
 export const getAllBookings = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    if (!req.user) {
-      throw new APIError("Unauthorized", 401);
-    }
-
-    if (req.user.role !== Role.ADMIN) {
-      logger.warn("Non-admin attempted to fetch all bookings", {
-        userId: req.user.userId
-      });
-
-      throw new APIError("Access denied: admins only", 403);
-    }
+    if (!req.user) throw new APIError("Unauthorized", 401);
 
     const { page, limit, skip } = getPagination(req.query.page, req.query.limit);
-    const { sortBy, sortOrder } = getBookingSort(
-      req.query.sortBy,
-      req.query.sortOrder
-    );
 
-    const { status } = req.query;
-    const statusValue = status ? String(status).toUpperCase() : undefined;
+    const allowedSorts = ["createdAt", "checkIn", "checkOut", "status"];
+    const sortBy = allowedSorts.includes(String(req.query.sortBy))
+      ? String(req.query.sortBy)
+      : "createdAt";
 
-    if (
-      statusValue &&
-      !Object.values(BookingStatus).includes(statusValue as BookingStatus)
-    ) {
-      throw new APIError("Invalid booking status", 400);
-    }
+    const sortOrder: "asc" | "desc" =
+      req.query.sortOrder === "asc" ? "asc" : "desc";
 
-    const where: Prisma.BookingWhereInput = {
-      ...(statusValue && {
-        status: statusValue as BookingStatus
-      })
-    };
+    const where =
+      req.user.role === Role.ADMIN
+        ? {}
+        : req.user.role === Role.HOST
+          ? {
+              listing: {
+                hostId: req.user.userId,
+              },
+            }
+          : {
+              guestId: req.user.userId,
+            };
 
     const totalBookings = await countBookingsService(where);
 
     const bookings = await getAllBookingsService({
-      where,
       skip,
       limit,
+      where,
       sortBy,
-      sortOrder
-    });
-
-    logger.info("Admin fetched bookings", {
-      adminId: req.user.userId,
-      totalBookings
+      sortOrder,
     });
 
     res.status(200).json({
@@ -150,68 +133,47 @@ export const getAllBookings = asyncHandler(
       totalBookings,
       totalPages: Math.ceil(totalBookings / limit),
       count: bookings.length,
-      data: bookings
+      data: bookings,
     });
   }
 );
 
 export const getBookingById = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    if (!req.user) {
-      throw new APIError("Unauthorized", 401);
-    }
+    if (!req.user) throw new APIError("Unauthorized", 401);
 
     const id = req.params.id as string;
 
     const booking = await getBookingByIdService(id);
-
-    if (!booking) {
-      throw new APIError("Booking not found", 404);
-    }
+    if (!booking) throw new APIError("Booking not found", 404);
 
     const isGuestOwner = booking.guestId === req.user.userId;
-    const isListingHost = booking.listing.hostId === req.user.userId;
+    const isHostOwner = booking.listing?.hostId === req.user.userId;
     const isAdmin = req.user.role === Role.ADMIN;
 
-    if (!isGuestOwner && !isListingHost && !isAdmin) {
-      logger.warn("Unauthorized booking access attempt", {
-        userId: req.user.userId,
-        bookingId: id
-      });
-
-      throw new APIError("You are not allowed to view this booking", 403);
+    if (!isGuestOwner && !isHostOwner && !isAdmin) {
+      throw new APIError("Access denied", 403);
     }
 
     res.status(200).json({
       success: true,
       message: "Booking retrieved successfully",
-      data: booking
+      data: booking,
     });
   }
 );
 
 export const getBookingsByGuest = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    if (!req.user) {
-      throw new APIError("Unauthorized", 401);
-    }
+    if (!req.user) throw new APIError("Unauthorized", 401);
 
-    const guestId = req.params.id as string;
+    const guestId = String(req.params.userId || req.user.userId);
 
-    if (req.user.role !== Role.ADMIN && req.user.userId !== guestId) {
-      logger.warn("Unauthorized guest bookings access attempt", {
-        userId: req.user.userId,
-        guestId
-      });
-
-      throw new APIError("You can only view your own bookings", 403);
+    if (guestId !== req.user.userId && req.user.role !== Role.ADMIN) {
+      throw new APIError("Access denied", 403);
     }
 
     const { page, limit, skip } = getPagination(req.query.page, req.query.limit);
-    const { sortBy, sortOrder } = getBookingSort(
-      req.query.sortBy,
-      req.query.sortOrder
-    );
 
     const totalBookings = await countBookingsByGuestService(guestId);
 
@@ -219,14 +181,6 @@ export const getBookingsByGuest = asyncHandler(
       guestId,
       skip,
       limit,
-      sortBy,
-      sortOrder
-    });
-
-    logger.info("Guest bookings fetched", {
-      requesterId: req.user.userId,
-      guestId,
-      totalBookings
     });
 
     res.status(200).json({
@@ -237,195 +191,173 @@ export const getBookingsByGuest = asyncHandler(
       totalBookings,
       totalPages: Math.ceil(totalBookings / limit),
       count: bookings.length,
-      data: bookings
+      data: bookings,
+    });
+  }
+);
+
+export const getHostBookings = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw new APIError("Unauthorized", 401);
+
+    if (req.user.role !== Role.HOST && req.user.role !== Role.ADMIN) {
+      throw new APIError("Access denied: hosts only", 403);
+    }
+
+    const hostId = req.user.userId;
+
+    const totalBookings = await countBookingsByHostService(hostId);
+    const bookings = await getBookingsByHostService(hostId);
+
+    logger.info("Host bookings fetched", {
+      hostId,
+      totalBookings,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Host bookings retrieved successfully",
+      totalBookings,
+      count: bookings.length,
+      data: bookings,
     });
   }
 );
 
 export const updateBooking = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    if (!req.user) {
-      throw new APIError("Unauthorized", 401);
-    }
+    if (!req.user) throw new APIError("Unauthorized", 401);
 
     const id = req.params.id as string;
-    const { checkIn, checkOut, listingId } = req.body;
 
-    const existingBooking = await getBookingByIdService(id);
+    const booking = await getBookingByIdService(id);
+    if (!booking) throw new APIError("Booking not found", 404);
 
-    if (!existingBooking) {
-      throw new APIError("Booking not found", 404);
+    const isGuestOwner = booking.guestId === req.user.userId;
+    const isAdmin = req.user.role === Role.ADMIN;
+
+    if (!isGuestOwner && !isAdmin) {
+      throw new APIError("Access denied", 403);
     }
 
-    if (
-      existingBooking.guestId !== req.user.userId &&
-      req.user.role !== Role.ADMIN
-    ) {
-      logger.warn("Unauthorized booking update attempt", {
-        userId: req.user.userId,
-        bookingId: id
-      });
+    if (req.body.checkIn || req.body.checkOut) {
+      const checkInDate = new Date(req.body.checkIn ?? booking.checkIn);
+      const checkOutDate = new Date(req.body.checkOut ?? booking.checkOut);
 
-      throw new APIError("You can only update your own booking", 403);
+      const overlappingBooking = await findOverlappingBookingService(
+        booking.listingId,
+        checkInDate,
+        checkOutDate,
+        booking.id
+      );
+
+      if (overlappingBooking) {
+        throw new APIError("Listing is already booked for these dates", 409);
+      }
     }
 
-    if (existingBooking.status === BookingStatus.CANCELLED) {
-      throw new APIError("Cancelled bookings cannot be updated", 400);
-    }
-
-    const finalListingId = listingId ?? existingBooking.listingId;
-    const finalCheckIn = checkIn ? new Date(checkIn) : existingBooking.checkIn;
-    const finalCheckOut = checkOut
-      ? new Date(checkOut)
-      : existingBooking.checkOut;
-
-    if (
-      Number.isNaN(finalCheckIn.getTime()) ||
-      Number.isNaN(finalCheckOut.getTime())
-    ) {
-      throw new APIError("Invalid date format", 400);
-    }
-
-    const overlappingBooking = await findOverlappingBookingService(
-      finalListingId,
-      finalCheckIn,
-      finalCheckOut,
-      id
-    );
-
-    if (overlappingBooking) {
-      logger.warn("Booking update conflict detected", {
-        bookingId: id,
-        userId: req.user.userId,
-        listingId: finalListingId
-      });
-
-      throw new APIError("Listing is already booked for these dates", 409);
-    }
-
-    const updatedBooking = await updateBookingService(id, {
-      ...(checkIn !== undefined && { checkIn: finalCheckIn }),
-      ...(checkOut !== undefined && { checkOut: finalCheckOut }),
-      ...(listingId !== undefined && { listingId })
-    });
+    const updatedBooking = await updateBookingService(id, req.body);
 
     logger.info("Booking updated", {
       bookingId: id,
-      userId: req.user.userId
+      userId: req.user.userId,
     });
 
     res.status(200).json({
       success: true,
       message: "Booking updated successfully",
-      data: updatedBooking
+      data: updatedBooking,
     });
   }
 );
 
 export const updateBookingStatus = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    if (!req.user) {
-      throw new APIError("Unauthorized", 401);
-    }
+    if (!req.user) throw new APIError("Unauthorized", 401);
 
     const id = req.params.id as string;
-    const { status } = req.body;
+    const { status } = req.body as { status: BookingStatus };
 
-    const existingBooking = await getBookingByIdService(id);
+    const booking = await getBookingByIdService(id);
+    if (!booking) throw new APIError("Booking not found", 404);
 
-    if (!existingBooking) {
-      throw new APIError("Booking not found", 404);
-    }
-
-    const isListingHost = existingBooking.listing.hostId === req.user.userId;
+    const isGuestOwner = booking.guestId === req.user.userId;
+    const isHostOwner = booking.listing?.hostId === req.user.userId;
     const isAdmin = req.user.role === Role.ADMIN;
 
-    if (!isListingHost && !isAdmin) {
-      logger.warn("Unauthorized booking status update attempt", {
-        userId: req.user.userId,
-        bookingId: id
+    if (!isGuestOwner && !isHostOwner && !isAdmin) {
+      throw new APIError("Access denied", 403);
+    }
+
+    if (isGuestOwner && status !== BookingStatus.CANCELLED) {
+      throw new APIError("Guests can only cancel bookings", 403);
+    }
+
+    const updatedBooking = await updateBookingStatusService(id, status);
+
+    if (status === BookingStatus.CONFIRMED) {
+      await createNotificationService({
+        userId: booking.guestId,
+        title: "Booking confirmed",
+        message: `Your booking for ${
+          booking.listing?.title || "a listing"
+        } was confirmed.`,
+        type: NotificationType.BOOKING_CREATED,
       });
-
-      throw new APIError(
-        "Only the listing host or admin can update booking status",
-        403
-      );
     }
 
-    const statusValue = String(status).toUpperCase();
-
-    if (!Object.values(BookingStatus).includes(statusValue as BookingStatus)) {
-      throw new APIError("Invalid booking status", 400);
+    if (status === BookingStatus.CANCELLED) {
+      await createNotificationService({
+        userId: booking.guestId,
+        title: "Booking cancelled",
+        message: `Your booking for ${
+          booking.listing?.title || "a listing"
+        } was cancelled.`,
+        type: NotificationType.BOOKING_CANCELLED,
+      });
     }
-
-    const updatedBooking = await updateBookingStatusService(
-      id,
-      statusValue as BookingStatus
-    );
 
     logger.info("Booking status updated", {
       bookingId: id,
+      status,
       userId: req.user.userId,
-      status: statusValue
     });
 
     res.status(200).json({
       success: true,
       message: "Booking status updated successfully",
-      data: updatedBooking
+      data: updatedBooking,
     });
   }
 );
 
 export const deleteBooking = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    if (!req.user) {
-      throw new APIError("Unauthorized", 401);
-    }
+    if (!req.user) throw new APIError("Unauthorized", 401);
 
     const id = req.params.id as string;
 
-    const existingBooking = await getBookingByIdService(id);
+    const booking = await getBookingByIdService(id);
+    if (!booking) throw new APIError("Booking not found", 404);
 
-    if (!existingBooking) {
-      throw new APIError("Booking not found", 404);
+    const isGuestOwner = booking.guestId === req.user.userId;
+    const isHostOwner = booking.listing?.hostId === req.user.userId;
+    const isAdmin = req.user.role === Role.ADMIN;
+
+    if (!isGuestOwner && !isHostOwner && !isAdmin) {
+      throw new APIError("Access denied", 403);
     }
 
-    if (
-      existingBooking.guestId !== req.user.userId &&
-      req.user.role !== Role.ADMIN
-    ) {
-      logger.warn("Unauthorized booking cancel attempt", {
-        userId: req.user.userId,
-        bookingId: id
-      });
+    await deleteBookingService(id);
 
-      throw new APIError("You can only cancel your own bookings", 403);
-    }
-
-    if (existingBooking.status === BookingStatus.CANCELLED) {
-      logger.warn("Booking already cancelled", {
-        bookingId: id,
-        userId: req.user.userId
-      });
-
-      throw new APIError("Booking is already cancelled", 400);
-    }
-
-    const cancelledBooking = await updateBookingStatusService(
-      id,
-      BookingStatus.CANCELLED
-    );
-
-    logger.info("Booking cancelled", {
+    logger.info("Booking deleted", {
       bookingId: id,
-      userId: req.user.userId
+      userId: req.user.userId,
     });
 
     res.status(200).json({
       success: true,
-      message: "Booking cancelled successfully",
-      data: cancelledBooking
+      message: "Booking deleted successfully",
     });
   }
 );

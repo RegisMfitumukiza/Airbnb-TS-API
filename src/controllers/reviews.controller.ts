@@ -12,7 +12,8 @@ import {
   countReviewsByListingService,
   getReviewByIdService,
   deleteReviewService,
-  getReviewStatsByListingService
+  getReviewStatsByListingService,
+  getAllReviewsService
 } from "../services/reviews.service.js";
 
 import { getListingByIdService } from "../services/listings.service.js";
@@ -43,6 +44,17 @@ export const createReview = asyncHandler(async (req: Request, res: Response) => 
     success: true,
     message: "Review created successfully",
     data: review
+  });
+});
+
+// controller
+export const getAllReviews = asyncHandler(async (_req: Request, res: Response) => {
+  const reviews = await getAllReviewsService();
+
+  res.status(200).json({
+    success: true,
+    count: reviews.length,
+    data: reviews,
   });
 });
 
@@ -98,6 +110,8 @@ export const getReviewStatsByListing = asyncHandler(async (req: Request, res: Re
   });
 });
 
+
+
 export const deleteReview = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) throw new APIError("Unauthorized", 401);
 
@@ -109,21 +123,23 @@ export const deleteReview = asyncHandler(async (req: Request, res: Response) => 
   if (review.userId !== req.user.userId && req.user.role !== Role.ADMIN) {
     logger.warn("Unauthorized review delete attempt", {
       userId: req.user.userId,
-      reviewId: id
+      reviewId: id,
     });
 
     throw new APIError("You can only delete your own review", 403);
   }
 
-  await deleteReviewService(id);
+  const deletedReview = await deleteReviewService(id);
 
   logger.info("Review deleted", {
     reviewId: id,
-    userId: req.user.userId
+    listingId: review.listingId,
+    userId: req.user.userId,
   });
 
   res.status(200).json({
     success: true,
-    message: "Review deleted successfully"
+    message: "Review deleted successfully",
+    data: deletedReview,
   });
 });

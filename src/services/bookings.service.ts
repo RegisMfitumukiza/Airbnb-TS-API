@@ -4,18 +4,38 @@ import { BookingStatus, Prisma } from "../generated/prisma/client.js";
 type CreateBookingData = Prisma.BookingUncheckedCreateInput;
 type UpdateBookingData = Prisma.BookingUncheckedUpdateInput;
 
-type GetBookingsOptions = { 
-    guestId?: string;
-    skip: number;
-    limit: number;
-    where?: Prisma.BookingWhereInput;
-    sortBy?: string;
-    sortOrder?: "asc" | "desc";
+type GetBookingsOptions = {
+  guestId?: string;
+  skip: number;
+  limit: number;
+  where?: Prisma.BookingWhereInput;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
 };
 
 export const createBookingService = async (data: CreateBookingData) => {
   return prisma.booking.create({
-    data
+    data,
+    include: {
+      guest: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      listing: {
+        select: {
+          id: true,
+          title: true,
+          location: true,
+          pricePerNight: true,
+          hostId: true,
+          coverImage: true,
+          images: true,
+        },
+      },
+    },
   });
 };
 
@@ -24,22 +44,22 @@ export const getAllBookingsService = async ({
   limit,
   where = {},
   sortBy = "createdAt",
-  sortOrder = "desc"
+  sortOrder = "desc",
 }: GetBookingsOptions) => {
   return prisma.booking.findMany({
     skip,
     take: limit,
     where,
     orderBy: {
-      [sortBy]: sortOrder
+      [sortBy]: sortOrder,
     },
     include: {
       guest: {
         select: {
           id: true,
           name: true,
-          email: true
-        }
+          email: true,
+        },
       },
       listing: {
         select: {
@@ -47,10 +67,12 @@ export const getAllBookingsService = async ({
           title: true,
           location: true,
           pricePerNight: true,
-          hostId: true
-        }
-      }
-    }
+          hostId: true,
+          coverImage: true,
+          images: true,
+        },
+      },
+    },
   });
 };
 
@@ -58,47 +80,87 @@ export const countBookingsService = async (
   where?: Prisma.BookingWhereInput
 ) => {
   return prisma.booking.count({
-    where
+    where,
   });
 };
 
 export const getBookingsByGuestService = async ({
-    guestId,
-    skip,
-    limit,
-    sortBy = "createdAt",
-    sortOrder = "desc"
+  guestId,
+  skip,
+  limit,
+  sortBy = "createdAt",
+  sortOrder = "desc",
 }: GetBookingsOptions) => {
-    return prisma.booking.findMany({
+  return prisma.booking.findMany({
     where: { guestId },
     skip,
     take: limit,
     orderBy: {
-        [sortBy]: sortOrder
+      [sortBy]: sortOrder,
     },
-    select: {
-        id: true,
-        checkIn: true,
-        checkOut: true,
-        status: true,
-        createdAt: true,
-        listing: {
-            select: {
-                id: true,
-                title: true,
-                location: true,
-                pricePerNight: true
-            }
-        }
-    }
-});
+    include: {
+      listing: {
+        select: {
+          id: true,
+          title: true,
+          location: true,
+          pricePerNight: true,
+          coverImage: true,
+          images: true,
+        },
+      },
+    },
+  });
 };
 
 export const countBookingsByGuestService = async (guestId: string) => {
-    return prisma.booking.count({
-        where: { guestId }
-     });
-}
+  return prisma.booking.count({
+    where: { guestId },
+  });
+};
+
+export const getBookingsByHostService = async (hostId: string) => {
+  return prisma.booking.findMany({
+    where: {
+      listing: {
+        hostId,
+      },
+    },
+    include: {
+      guest: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      listing: {
+        select: {
+          id: true,
+          title: true,
+          location: true,
+          pricePerNight: true,
+          hostId: true,
+          coverImage: true,
+          images: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+};
+
+export const countBookingsByHostService = async (hostId: string) => {
+  return prisma.booking.count({
+    where: {
+      listing: {
+        hostId,
+      },
+    },
+  });
+};
 
 export const getBookingByIdService = async (id: string) => {
   return prisma.booking.findUnique({
@@ -108,8 +170,8 @@ export const getBookingByIdService = async (id: string) => {
         select: {
           id: true,
           name: true,
-          email: true
-        }
+          email: true,
+        },
       },
       listing: {
         select: {
@@ -117,10 +179,12 @@ export const getBookingByIdService = async (id: string) => {
           title: true,
           location: true,
           pricePerNight: true,
-          hostId: true
-        }
-      }
-    }
+          hostId: true,
+          coverImage: true,
+          images: true,
+        },
+      },
+    },
   });
 };
 
@@ -130,7 +194,27 @@ export const updateBookingService = async (
 ) => {
   return prisma.booking.update({
     where: { id },
-    data
+    data,
+    include: {
+      guest: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      listing: {
+        select: {
+          id: true,
+          title: true,
+          location: true,
+          pricePerNight: true,
+          hostId: true,
+          coverImage: true,
+          images: true,
+        },
+      },
+    },
   });
 };
 
@@ -140,13 +224,33 @@ export const updateBookingStatusService = async (
 ) => {
   return prisma.booking.update({
     where: { id },
-    data: { status }
+    data: { status },
+    include: {
+      guest: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      listing: {
+        select: {
+          id: true,
+          title: true,
+          location: true,
+          pricePerNight: true,
+          hostId: true,
+          coverImage: true,
+          images: true,
+        },
+      },
+    },
   });
 };
 
 export const deleteBookingService = async (id: string) => {
   return prisma.booking.delete({
-    where: { id }
+    where: { id },
   });
 };
 
@@ -160,19 +264,19 @@ export const findOverlappingBookingService = async (
     where: {
       listingId,
       status: {
-        not: BookingStatus.CANCELLED
+        not: BookingStatus.CANCELLED,
       },
       ...(excludeBookingId && {
         id: {
-          not: excludeBookingId
-        }
+          not: excludeBookingId,
+        },
       }),
       checkIn: {
-        lte: checkOut
+        lt: checkOut,
       },
       checkOut: {
-        gte: checkIn
-      }
-    }
+        gt: checkIn,
+      },
+    },
   });
 };

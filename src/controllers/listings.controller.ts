@@ -1,5 +1,10 @@
 import { Request, Response } from "express";
-import { ListingType, Prisma, Role } from "../generated/prisma/client.js";
+import {
+  ListingCategory,
+  ListingType,
+  Prisma,
+  Role
+} from "../generated/prisma/client.js";
 
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { APIError } from "../utils/ApiError.js";
@@ -7,8 +12,10 @@ import { getPagination } from "../utils/pagination.js";
 import { logger } from "../utils/logger.js";
 
 import {
-  uploadBufferToCloudinary,
-  deleteFromCloudinary
+  deleteFromCloudinary,
+  getListingCoverFolder,
+  getListingGalleryFolder,
+  uploadBufferToCloudinary
 } from "../utils/cloudinary.helper.js";
 
 import {
@@ -51,9 +58,26 @@ export const createListing = asyncHandler(async (req: Request, res: Response) =>
 export const getAllListing = asyncHandler(async (req: Request, res: Response) => {
   const { page, limit, skip } = getPagination(req.query.page, req.query.limit);
 
-  const { location, type, minPrice, maxPrice } = req.query;
+  const {
+    location,
+    type,
+    category,
+    minPrice,
+    maxPrice,
+    guests,
+    available,
+    superhost,
+    search
+  } = req.query;
 
-  const allowedSorts = ["title", "createdAt", "pricePerNight", "rating"];
+  const allowedSorts = [
+    "title",
+    "createdAt",
+    "pricePerNight",
+    "rating",
+    "category",
+    "available"
+  ];
 
   const sortBy = allowedSorts.includes(String(req.query.sortBy))
     ? String(req.query.sortBy)
@@ -63,16 +87,29 @@ export const getAllListing = asyncHandler(async (req: Request, res: Response) =>
     req.query.sortOrder === "asc" ? "asc" : "desc";
 
   const typeValue = type ? String(type).toUpperCase() : undefined;
+  const categoryValue = category ? String(category).toUpperCase() : undefined;
 
   if (typeValue && !Object.values(ListingType).includes(typeValue as ListingType)) {
     throw new APIError("Invalid listing type", 400);
   }
 
+  if (
+    categoryValue &&
+    !Object.values(ListingCategory).includes(categoryValue as ListingCategory)
+  ) {
+    throw new APIError("Invalid listing category", 400);
+  }
+
   const min = minPrice ? Number(minPrice) : undefined;
   const max = maxPrice ? Number(maxPrice) : undefined;
+  const guestCount = guests ? Number(guests) : undefined;
 
   if ((minPrice && Number.isNaN(min)) || (maxPrice && Number.isNaN(max))) {
     throw new APIError("Price filters must be valid numbers", 400);
+  }
+
+  if (guests && Number.isNaN(guestCount)) {
+    throw new APIError("Guests filter must be a valid number", 400);
   }
 
   if (min !== undefined && max !== undefined && min > max) {
@@ -87,8 +124,49 @@ export const getAllListing = asyncHandler(async (req: Request, res: Response) =>
       }
     }),
 
+    ...(search && {
+      OR: [
+        {
+          title: {
+            contains: String(search),
+            mode: "insensitive"
+          }
+        },
+        {
+          description: {
+            contains: String(search),
+            mode: "insensitive"
+          }
+        },
+        {
+          location: {
+            contains: String(search),
+            mode: "insensitive"
+          }
+        }
+      ]
+    }),
+
     ...(typeValue && {
       type: typeValue as ListingType
+    }),
+
+    ...(categoryValue && {
+      category: categoryValue as ListingCategory
+    }),
+
+    ...(guestCount !== undefined && {
+      guests: {
+        gte: guestCount
+      }
+    }),
+
+    ...(available !== undefined && {
+      available: String(available) === "true"
+    }),
+
+    ...(superhost !== undefined && {
+      superhost: String(superhost) === "true"
     }),
 
     ...((min !== undefined || max !== undefined) && {
@@ -263,10 +341,9 @@ export const uploadCoverImageListing = asyncHandler(
       await deleteFromCloudinary(existingList.coverImagePublicId);
     }
 
-    const uploadedCoverImage = await uploadBufferToCloudinary(
-      req.file.buffer,
-      "Listing-Images/Cover-Images"
-    );
+    const uploadedCoverImage = await uploadBufferToCloudinary( req.file.buffer, {
+      folder: getListingCoverFolder(id)
+    });
 
     const updatedCoverImage = await updateListingCoverImageService(
       id,
@@ -361,9 +438,9 @@ export const uploadListingImages = asyncHandler(
     try {
       for (const file of files) {
         const uploadedImage = await uploadBufferToCloudinary(
-          file.buffer,
-          "Listing-Images"
-        );
+          file.buffer, {
+            folder: getListingGalleryFolder(id)
+          });
 
         uploadedImages.push(uploadedImage);
       }
@@ -479,11 +556,11 @@ export const deleteSingleListingImage = asyncHandler(
     await deleteFromCloudinary(publicId);
 
     const updatedImages = existingList.images.filter(
-      (_, index) => index !== imageIndex
+      (_image, index) => index !== imageIndex
     );
 
     const updatedImagePublicIds = existingList.imagesPublicIds.filter(
-      (_, index) => index !== imageIndex
+      (_publicId, index) => index !== imageIndex
     );
 
     const updatedListing = await deleteSingleListingImageService(

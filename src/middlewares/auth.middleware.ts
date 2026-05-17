@@ -3,25 +3,26 @@ import jwt from "jsonwebtoken";
 
 import { APIError } from "../utils/ApiError.js";
 import { Role } from "../generated/prisma/client.js";
+import { prisma } from "../lib/prisma.js";
 
 type AuthPayload = {
   userId: string;
   role: Role;
 };
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: AuthPayload;
-    }
-  }
-}
+// declare global {
+//   namespace Express {
+//     interface Request {
+//       user?: AuthPayload;
+//     }
+//   }
+// }
 
-export const authenticate = (
+export const authenticate = async (
   req: Request,
   res: Response,
   next: NextFunction
-): void => {
+): Promise<void> => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -39,9 +40,28 @@ export const authenticate = (
 
     const decoded = jwt.verify(token, secret) as AuthPayload;
 
+    const user = await prisma.user.findUnique({
+      where: {
+        id: decoded.userId
+      },
+      select: {
+        id: true,
+        role: true,
+        isBanned: true
+      }
+    });
+
+    if (!user) {
+      return next(new APIError("User not found", 404));
+    }
+
+    if (user.isBanned) {
+      return next(new APIError("Your account has been banned", 403));
+    }
+
     req.user = {
-      userId: decoded.userId,
-      role: decoded.role
+      userId: user.id,
+      role: user.role
     };
 
     next();

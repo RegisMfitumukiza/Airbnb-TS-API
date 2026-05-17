@@ -3,6 +3,9 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { APIError } from "../utils/ApiError.js";
 import { Prisma, Role } from "../generated/prisma/client.js";
 
+import { sendEmail } from "../config/email.js";
+import { userBannedEmail } from "../templates/userBannedEmail.js";
+
 import {
   createUserService,
   getAllUsersService,
@@ -13,13 +16,15 @@ import {
   updateUserAvatarService,
   deleteUserAvatarService,
   countUsersService,
-  getUserStatsService
+  getUserStatsService,
+  banUserService
 } from "../services/users.service.js";
 
 import { getPagination } from "../utils/pagination.js";
 import { logger } from "../utils/logger.js";
 
 import {
+  getUserAvatarFolder,
   uploadBufferToCloudinary,
   deleteFromCloudinary
 } from "../utils/cloudinary.helper.js";
@@ -211,7 +216,9 @@ export const updateMe = asyncHandler(async (req: Request, res: Response) => {
     throw new APIError("Unauthorized", 401);
   }
 
-  const user = await updateUserService(req.user.userId, req.body);
+  const { role, password, resetToken, resetTokenExpiry, ...safeBody } = req.body;
+
+  const user = await updateUserService(req.user.userId, safeBody);
 
   logger.info("User profile updated", {
     userId: req.user.userId
@@ -245,8 +252,10 @@ export const uploadMyAvatar = asyncHandler(
     }
 
     const uploadedAvatar = await uploadBufferToCloudinary(
-      req.file.buffer,
-      "User-Avatars"
+      req.file.buffer, {
+        folder: getUserAvatarFolder()
+      }
+      
     );
 
     const updatedUser = await updateUserAvatarService(
@@ -320,5 +329,61 @@ export const getUserStats = asyncHandler(async (req: Request, res: Response) => 
     success: true,
     message: "User stats retrieved successfully",
     data: stats
+  });
+});
+
+export const banUser = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new APIError("Unauthorized", 401);
+  }
+
+  const id = req.params.id as string;
+  const { reason } = req.body;
+
+  if (req.user.role !== Role.ADMIN) {
+    logger.warn("Unauthorized ban user attempt", {
+      requesterId: req.user.userId,
+      requesterRole: req.user.role,
+      targetUserId: id
+    });
+
+    throw new APIError("Access denied", 403);
+  }
+
+  if (req.user.userId === id) {
+    throw new APIError("You cannot ban your own account", 400);
+  }
+
+  const user = await banUserService(id, req.user.userId, reason);
+
+  logger.warn("User banned by admin", {
+    adminId: req.user.userId,
+    bannedUserId: id,
+    reason: reason || "No reason provided"
+  });
+
+  try {
+    await sendEmail(
+      user.email,
+      "Your account has been suspended",
+      userBannedEmail(user.name, reason)
+    );
+
+    logger.info("Ban notification email sent", {
+      userId: user.id,
+      email: user.email
+    });
+  } catch (error) {
+    logger.error("Ban notification email failed", {
+      userId: user.id,
+      email: user.email,
+      error
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "User banned successfully",
+    data: user
   });
 });

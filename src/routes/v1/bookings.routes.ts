@@ -4,6 +4,7 @@ import {
   createBooking,
   getAllBookings,
   getBookingById,
+  getHostBookings,
   updateBooking,
   updateBookingStatus,
   deleteBooking
@@ -113,6 +114,29 @@ router.get("/", authenticate, getAllBookings);
  *         description: Listing not found
  */
 router.post("/", authenticate, validate(createBookingSchema), createBooking);
+
+/**
+ * @swagger
+ * /api/v1/bookings/host:
+ *   get:
+ *     summary: Get host bookings
+ *     description: Returns booking requests for listings owned by logged-in host.
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Host bookings retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Host only
+ */
+router.get(
+  "/host",
+  authenticate,
+  getHostBookings
+);
 
 /**
  * @swagger

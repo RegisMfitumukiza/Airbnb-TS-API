@@ -1,6 +1,9 @@
 import "dotenv/config";
 import express from "express";
 import compression from "compression";
+import cors from "cors";
+
+import passport from "./config/passport.js"
 
 import apiV1 from "./routes/v1/versioning.js";
 
@@ -11,15 +14,23 @@ import { apiLimiter } from "./middlewares/rateLimiting.js";
 import { setupSwagger } from "./config/swagger.js";
 import { requestLogger } from "./middlewares/requestLogger.middleware.js";
 import { logger } from "./utils/logger.js";
-import { error } from "node:console";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 /* ================= MIDDLEWARE ================= */
 app.use(compression());
+
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(passport.initialize());
 app.use(requestLogger);
 
 /* ================= HEALTH CHECK ================= */
@@ -33,13 +44,13 @@ app.get("/health", async (_req, res) => {
       timestamp: new Date(),
       service: "prisma-node-api",
       environment: process.env.NODE_ENV,
-      database: "connected"
+      database: "connected",
     });
-  } catch {
+  } catch (error) {
     res.status(503).json({
       status: "error",
       database: "disconnected",
-      message: error instanceof Error ? error.message : "Unknown error"
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 });

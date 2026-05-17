@@ -1,7 +1,7 @@
 const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
 
-export const welcomeEmail = (name: string): string => {
-  const listingsUrl = `${frontendUrl}/listings`;
+export const userBannedEmail = (name: string, reason?: string): string => {
+  const supportUrl = `${frontendUrl}/contact`;
 
   return `
     <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background:#f7f7f7; padding:24px 0;">
@@ -11,22 +11,34 @@ export const welcomeEmail = (name: string): string => {
             <tr>
               <td style="padding:32px; font-family:Arial, Helvetica, sans-serif; color:#484848;">
                 <h1 style="margin:0 0 16px; color:#FF5A5F; font-size:28px;">
-                  Welcome to Airbnb, ${name}! 🎉
+                  Account suspended
                 </h1>
 
                 <p style="font-size:16px; line-height:1.6; margin:0 0 12px;">
-                  Your account has been created successfully.
+                  Hello ${name},
                 </p>
 
+                <p style="font-size:16px; line-height:1.6; margin:0 0 12px;">
+                  Your account has been banned by an administrator.
+                </p>
+
+                ${
+                  reason
+                    ? `<p style="font-size:16px; line-height:1.6; margin:0 0 12px;">
+                        <strong>Reason:</strong> ${reason}
+                      </p>`
+                    : ""
+                }
+
                 <p style="font-size:16px; line-height:1.6; margin:0 0 24px;">
-                  Start exploring listings, save your favorite stays, and book your next trip.
+                  If you believe this was a mistake, please contact support.
                 </p>
 
                 <table border="0" cellspacing="0" cellpadding="0">
                   <tr>
                     <td align="center" bgcolor="#FF5A5F" style="border-radius:8px;">
-                      <a href="${listingsUrl}" target="_blank" style="font-size:16px; font-family:Arial, Helvetica, sans-serif; color:#ffffff; text-decoration:none; padding:12px 24px; display:inline-block; font-weight:bold;">
-                        Explore Listings
+                      <a href="${supportUrl}" target="_blank" style="font-size:16px; font-family:Arial, Helvetica, sans-serif; color:#ffffff; text-decoration:none; padding:12px 24px; display:inline-block; font-weight:bold;">
+                        Contact Support
                       </a>
                     </td>
                   </tr>
@@ -34,7 +46,7 @@ export const welcomeEmail = (name: string): string => {
 
                 <p style="font-size:13px; color:#767676; margin-top:28px; line-height:1.5;">
                   If the button does not work, copy and paste this link into your browser:<br />
-                  <a href="${listingsUrl}" style="color:#FF5A5F; word-break:break-all;">${listingsUrl}</a>
+                  <a href="${supportUrl}" style="color:#FF5A5F; word-break:break-all;">${supportUrl}</a>
                 </p>
               </td>
             </tr>

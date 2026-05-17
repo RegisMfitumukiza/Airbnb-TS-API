@@ -1,4 +1,5 @@
 import { Router } from "express";
+import passport from "../../config/passport.js";
 
 import {
   register,
@@ -6,7 +7,8 @@ import {
   getMe,
   changePassword,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  googleOAuthCallback
 } from "../../controllers/auth.controller.js";
 
 import { validate } from "../../middlewares/validate.middleware.js";
@@ -32,10 +34,51 @@ const router = Router();
 
 /**
  * @swagger
+ * /api/v1/auth/google:
+ *   get:
+ *     summary: Start Google OAuth login
+ *     description: Redirects user to Google authentication page.
+ *     tags: [Auth]
+ *     responses:
+ *       302:
+ *         description: Redirect to Google OAuth consent screen
+ */
+router.get(
+  "/google",
+  passport.authenticate("google", {
+    scope: ["profile", "email"],
+    session: false
+  })
+);
+
+/**
+ * @swagger
+ * /api/v1/auth/google/callback:
+ *   get:
+ *     summary: Google OAuth callback
+ *     description: Handles Google callback and redirects to frontend with JWT token.
+ *     tags: [Auth]
+ *     responses:
+ *       302:
+ *         description: Redirect to frontend OAuth success page
+ *       401:
+ *         description: Google authentication failed
+ */
+router.get(
+  "/google/callback",
+  passport.authenticate("google", {
+    failureRedirect: `${process.env.FRONTEND_URL || "http://localhost:5173"}/login`,
+    session: false
+  }),
+  googleOAuthCallback
+);
+
+/**
+ * @swagger
  * /api/v1/auth/register:
  *   post:
  *     summary: Register a new user
- *     description: Create a new user account.
+ *     description: Create a new GUEST user account. Host access is requested separately and approved by an admin.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -69,10 +112,6 @@ const router = Router();
  *               confirmPassword:
  *                 type: string
  *                 example: Password123!
- *               role:
- *                 type: string
- *                 enum: [GUEST, HOST]
- *                 example: GUEST
  *     responses:
  *       201:
  *         description: User registered successfully
@@ -147,7 +186,7 @@ router.get("/me", authenticate, getMe);
  *             required:
  *               - currentPassword
  *               - newPassword
- *               - confirmPassword
+ *               - confirmNewPassword
  *             properties:
  *               currentPassword:
  *                 type: string
@@ -155,7 +194,7 @@ router.get("/me", authenticate, getMe);
  *               newPassword:
  *                 type: string
  *                 example: NewPassword123!
- *               confirmPassword:
+ *               confirmNewPassword:
  *                 type: string
  *                 example: NewPassword123!
  *     responses:
@@ -178,7 +217,7 @@ router.post(
  * /api/v1/auth/forgot-password:
  *   post:
  *     summary: Forgot password
- *     description: Send password reset link to user email.
+ *     description: Send frontend password reset link to user email.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -210,7 +249,7 @@ router.post(
  * /api/v1/auth/reset-password/{token}:
  *   post:
  *     summary: Reset password
- *     description: Reset password using token sent to email.
+ *     description: Reset password using token from email link.
  *     tags: [Auth]
  *     parameters:
  *       - in: path
@@ -227,12 +266,12 @@ router.post(
  *             type: object
  *             required:
  *               - newPassword
- *               - confirmPassword
+ *               - confirmNewPassword
  *             properties:
  *               newPassword:
  *                 type: string
  *                 example: NewPassword123!
- *               confirmPassword:
+ *               confirmNewPassword:
  *                 type: string
  *                 example: NewPassword123!
  *     responses:

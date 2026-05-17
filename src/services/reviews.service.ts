@@ -12,18 +12,68 @@ type GetListingReviewsOptions = {
   sortOrder?: "asc" | "desc";
 };
 
+const updateListingAverageRating = async (listingId: string) => {
+  const stats = await prisma.review.aggregate({
+    where: { listingId },
+    _avg: {
+      rating: true,
+    },
+  });
+
+  await prisma.listing.update({
+    where: { id: listingId },
+    data: {
+      rating: stats._avg.rating,
+    },
+  });
+};
+
 export const createReviewService = async (data: CreateReviewData) => {
-  return prisma.review.create({
+  const review = await prisma.review.create({
     data,
     include: {
       user: {
         select: {
           id: true,
           name: true,
-          avatar: true
-        }
-      }
-    }
+          avatar: true,
+        },
+      },
+      listing: {
+        select: {
+          id: true,
+          title: true,
+          location: true,
+        },
+      },
+    },
+  });
+
+  await updateListingAverageRating(review.listingId);
+
+  return review;
+};
+
+export const getAllReviewsService = async () => {
+  return prisma.review.findMany({
+    orderBy: { createdAt: "desc" },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+        },
+      },
+      listing: {
+        select: {
+          id: true,
+          title: true,
+          location: true,
+        },
+      },
+    },
   });
 };
 
@@ -33,27 +83,27 @@ export const getReviewsByListingService = async ({
   limit,
   where = {},
   sortBy = "createdAt",
-  sortOrder = "desc"
+  sortOrder = "desc",
 }: GetListingReviewsOptions) => {
   return prisma.review.findMany({
     where: {
       listingId,
-      ...where
+      ...where,
     },
     skip,
     take: limit,
     orderBy: {
-      [sortBy]: sortOrder
+      [sortBy]: sortOrder,
     },
     include: {
       user: {
         select: {
           id: true,
           name: true,
-          avatar: true
-        }
-      }
-    }
+          avatar: true,
+        },
+      },
+    },
   });
 };
 
@@ -64,50 +114,54 @@ export const countReviewsByListingService = async (
   return prisma.review.count({
     where: {
       listingId,
-      ...where
-    }
+      ...where,
+    },
   });
 };
 
 export const getReviewByIdService = async (id: string) => {
   return prisma.review.findUnique({
-    where: { id }
+    where: { id },
   });
 };
 
 export const deleteReviewService = async (id: string) => {
-  return prisma.review.delete({
-    where: { id }
+  const review = await prisma.review.delete({
+    where: { id },
   });
+
+  await updateListingAverageRating(review.listingId);
+
+  return review;
 };
 
 export const getReviewStatsByListingService = async (listingId: string) => {
   const totalReviews = await prisma.review.count({
-    where: { listingId }
+    where: { listingId },
   });
 
   const ratingStats = await prisma.review.aggregate({
     where: { listingId },
     _avg: {
-      rating: true
+      rating: true,
     },
     _min: {
-      rating: true
+      rating: true,
     },
     _max: {
-      rating: true
-    }
+      rating: true,
+    },
   });
 
   const reviewsByRating = await prisma.review.groupBy({
     by: ["rating"],
     where: { listingId },
     _count: {
-      rating: true
+      rating: true,
     },
     orderBy: {
-      rating: "desc"
-    }
+      rating: "desc",
+    },
   });
 
   return {
@@ -117,7 +171,7 @@ export const getReviewStatsByListingService = async (listingId: string) => {
     maxRating: ratingStats._max.rating,
     reviewsByRating: reviewsByRating.map((item) => ({
       rating: item.rating,
-      count: item._count.rating
-    }))
+      count: item._count.rating,
+    })),
   };
 };
