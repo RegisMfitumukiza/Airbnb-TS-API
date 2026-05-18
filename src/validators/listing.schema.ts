@@ -51,6 +51,9 @@ export const createListingSchema = z.object({
         message: "Location is required",
       }),
 
+      latitude: z.coerce.number().optional(),
+      longitude: z.coerce.number().optional(),
+
       pricePerNight: z.coerce.number().positive({
         message: "Price must be a positive number",
       }),
@@ -83,6 +86,9 @@ export const updateListingSchema = z.object({
       title: z.string().min(5).optional(),
       description: z.string().min(10).optional(),
       location: z.string().min(2).optional(),
+      latitude: z.coerce.number().optional(),
+      longitude: z.coerce.number().optional(),
+
       pricePerNight: z.coerce.number().positive().optional(),
       guests: z.coerce.number().int().min(1).optional(),
       type: ListingTypeEnum.optional(),

@@ -94,7 +94,11 @@ model Listing {
   id            String      @id @default(uuid())
   title         String
   description   String
+
   location      String
+  latitude      Float?
+  longitude     Float?
+
   pricePerNight Float
   guests        Int
   type          ListingType
