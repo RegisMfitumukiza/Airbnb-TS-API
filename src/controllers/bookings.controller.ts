@@ -25,6 +25,7 @@ import {
   findOverlappingBookingService,
 } from "../services/bookings.service.js";
 
+import { findUserByIdService } from "../services/auth.service.js";
 import { getListingByIdService } from "../services/listings.service.js";
 import { createNotificationService } from "../services/notifications.service.js";
 
@@ -66,10 +67,13 @@ export const createBooking = asyncHandler(
       listingId,
     });
 
+    const guest = await findUserByIdService(req.user.userId);
+
     await createNotificationService({
       userId: listing.hostId,
       title: "New booking request",
-      message: `${req.user.email} requested to book ${listing.title}`,
+      message: `${guest?.name || "A guest"
+        } requested to book ${listing.title} from ${checkInDate.toDateString()} to ${checkOutDate.toDateString()}`,
       type: NotificationType.BOOKING_CREATED,
     });
 
@@ -107,13 +111,13 @@ export const getAllBookings = asyncHandler(
         ? {}
         : req.user.role === Role.HOST
           ? {
-              listing: {
-                hostId: req.user.userId,
-              },
-            }
+            listing: {
+              hostId: req.user.userId,
+            },
+          }
           : {
-              guestId: req.user.userId,
-            };
+            guestId: req.user.userId,
+          };
 
     const totalBookings = await countBookingsService(where);
 
@@ -299,9 +303,8 @@ export const updateBookingStatus = asyncHandler(
       await createNotificationService({
         userId: booking.guestId,
         title: "Booking confirmed",
-        message: `Your booking for ${
-          booking.listing?.title || "a listing"
-        } was confirmed.`,
+        message: `Your booking for ${booking.listing?.title || "a listing"
+          } was confirmed.`,
         type: NotificationType.BOOKING_CREATED,
       });
     }
@@ -310,9 +313,8 @@ export const updateBookingStatus = asyncHandler(
       await createNotificationService({
         userId: booking.guestId,
         title: "Booking cancelled",
-        message: `Your booking for ${
-          booking.listing?.title || "a listing"
-        } was cancelled.`,
+        message: `Your booking for ${booking.listing?.title || "a listing"
+          } was cancelled.`,
         type: NotificationType.BOOKING_CANCELLED,
       });
     }
